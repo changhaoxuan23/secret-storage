@@ -7,6 +7,7 @@
 #include <print>
 #include <sys/mman.h>
 #include <sys/random.h>
+#include <unistd.h>
 
 struct MemoryBlock {
 private:
