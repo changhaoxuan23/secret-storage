@@ -48,11 +48,10 @@ target_include_directories(SecretStorageAccessor INTERFACE
 )
 
 install(TARGETS SecretStorageAccessor EXPORT SecretStorageAccessorTargets
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib
-  RUNTIME DESTINATION bin
-  INCLUDES DESTINATION include
-  COMPONENT ClientLibrary
+  LIBRARY DESTINATION lib      COMPONENT ClientLibrary
+  ARCHIVE DESTINATION lib      COMPONENT ClientLibrary
+  RUNTIME DESTINATION bin      COMPONENT ClientLibrary
+  INCLUDES DESTINATION include COMPONENT ClientLibrary
 )
 install(
   FILES
