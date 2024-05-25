@@ -52,14 +52,14 @@ install(TARGETS SecretStorageAccessor EXPORT SecretStorageAccessorTargets
   ARCHIVE DESTINATION lib
   RUNTIME DESTINATION bin
   INCLUDES DESTINATION include
+  COMPONENT ClientLibrary
 )
 install(
   FILES
     secret_storage_accessor.hh
   DESTINATION
     include
-  COMPONENT
-    Devel
+  COMPONENT ClientLibrary
 )
 
 include(CMakePackageConfigHelpers)
@@ -83,6 +83,7 @@ install(EXPORT SecretStorageAccessorTargets
   SecretStorageAccessorTargets.cmake
   DESTINATION
     ${ConfigPackageLocation}
+  COMPONENT ClientLibrary
 )
 install(
   FILES
@@ -90,8 +91,7 @@ install(
     "${CMAKE_CURRENT_BINARY_DIR}/SecretStorageAccessor/SecretStorageAccessorConfigVersion.cmake"
   DESTINATION
     ${ConfigPackageLocation}
-  COMPONENT
-    Devel
+  COMPONENT ClientLibrary
 )
 
 add_executable(test-accessor test-accessor.cc)
@@ -104,5 +104,12 @@ pybind11_add_module(secret_storage_accessor
 )
 target_link_libraries(secret_storage_accessor PRIVATE SecretStorageAccessor)
 
-install(TARGETS secret_storage_accessor DESTINATION lib/python${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}/site-packages)
-install(TARGETS secret-storage DESTINATION bin)
+install(TARGETS secret_storage_accessor
+  DESTINATION lib/python${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}/site-packages
+  COMPONENT LanguageBinding
+  COMPONENT PythonLanguageBinding
+)
+install(TARGETS secret-storage
+  DESTINATION bin
+  COMPONENT Server
+)
