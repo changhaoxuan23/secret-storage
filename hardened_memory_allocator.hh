@@ -30,7 +30,6 @@ private:
 
   static void add_page();
   static void remove_page(MemoryBlock *entry);
-  static void remove_all_pages();
 
   static auto find_suitable_entry(size_t size) -> MemoryBlock *;
 
@@ -38,6 +37,8 @@ public:
   HardenedMemoryManager() = delete;
   [[nodiscard]] static auto allocate(size_t size) -> void *;
   static void               deallocate(void *address);
+  static void               shrink();
+  static void               close();
 };
 
 template <typename T> class HardenedMemoryAllocator final {

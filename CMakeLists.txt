@@ -3,7 +3,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_CXX_COMPILER clang++)
 
-project(secret-storage VERSION 1.0.0 LANGUAGES CXX)
+project(secret-storage VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -14,8 +14,17 @@ if(NOT DEFINED CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif()
 
+option(MemoryAllocatorAlwaysFreePages
+ "Whenever a memory block is freed, free the page it is on if the whole page is not allocated"
+)
+
+option(MemoryAllocatorWarnAboutPossibleLeakage
+ "Try to generate a warning if a leakage is detected when closing the allocator"
+)
+
 add_compile_options(-fPIC -stdlib=libc++)
 add_link_options(-fuse-ld=lld -stdlib=libc++)
+add_compile_definitions(VERSION="${PROJECT_VERSION}")
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 find_package(pybind11 CONFIG REQUIRED)
@@ -46,6 +55,16 @@ target_include_directories(SecretStorageAccessor INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>
 )
+
+if(MemoryAllocatorAlwaysFreePages)
+  target_compile_definitions(secret-storage PRIVATE MemoryAllocatorAlwaysFree)
+  target_compile_definitions(SecretStorageAccessor PRIVATE MemoryAllocatorAlwaysFree)
+endif()
+
+if(MemoryAllocatorWarnAboutPossibleLeakage)
+  target_compile_definitions(secret-storage PRIVATE MemoryAllocatorWarnLeakage)
+  target_compile_definitions(SecretStorageAccessor PRIVATE MemoryAllocatorWarnLeakage)
+endif()
 
 install(TARGETS SecretStorageAccessor EXPORT SecretStorageAccessorTargets
   LIBRARY DESTINATION lib      COMPONENT ClientLibrary
@@ -93,9 +112,11 @@ install(
   COMPONENT ClientLibrary
 )
 
-add_executable(test-accessor test-accessor.cc)
-target_link_libraries(test-accessor PRIVATE ConfigurationsPP SecretStorageAccessor)
-
+add_executable(secret-storage-ctl secret-storage-ctl.cc)
+target_link_libraries(secret-storage-ctl PRIVATE ConfigurationsPP SecretStorageAccessor)
+install(TARGETS secret-storage-ctl
+  RUNTIME DESTINATION bin COMPONENT ClientLibrary
+)
 
 
 pybind11_add_module(secret_storage_accessor

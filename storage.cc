@@ -28,6 +28,10 @@ public:
     }
     return &iterator->second;
   }
+  auto remove(const secured_string &&key) -> size_t {
+    std::lock_guard<std::mutex> lock(this->mutex);
+    return this->map.erase(key);
+  }
 };
 
 Storage::Storage() { this->implementation = new StorageImplementation(); }
@@ -43,6 +47,10 @@ void Storage::update(const secured_string &&key, const secured_string &&value) {
 [[nodiscard]] auto Storage::query(const secured_string &&key) const -> const secured_string * {
   return reinterpret_cast<StorageImplementation *>(this->implementation)
     ->query(std::forward<const secured_string>(key));
+}
+auto Storage::remove(const secured_string &&key) -> size_t {
+  return reinterpret_cast<StorageImplementation *>(this->implementation)
+    ->remove(std::forward<const secured_string>(key));
 }
 
 __attribute__((weak)) auto main() -> int {

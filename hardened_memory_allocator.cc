@@ -23,8 +23,6 @@ public:
   inline auto is_leader() -> bool { return this->size_ & 1; }
 };
 
-static bool allocated = false;
-
 void HardenedMemoryManager::add_before(MemoryBlock *target, MemoryBlock *before) {
   if (before->last == nullptr) {
     list = target;
@@ -187,12 +185,6 @@ auto HardenedMemoryManager::find_suitable_entry(size_t size) -> MemoryBlock * {
   // fill the allocated part with 0x42
   memset(reinterpret_cast<uint8_t *>(target) + sizeof(size_t), 0x42, target->size() - sizeof(size_t));
 
-  // setup cleanup
-  if (!allocated) {
-    atexit(HardenedMemoryManager::remove_all_pages);
-    allocated = true;
-  }
-
 #ifndef NDEBUG
   std::println("  allocated [0x{:016x}]", reinterpret_cast<uintmax_t>(target) + sizeof(size_t));
 #endif
@@ -203,20 +195,32 @@ void HardenedMemoryManager::deallocate(void *address) {
   auto entry = reinterpret_cast<MemoryBlock *>(reinterpret_cast<uint8_t *>(address) - sizeof(size_t));
   // randomly refill the content of block
   getrandom(address, entry->size() - sizeof(size_t), 0);
+  std::lock_guard<std::mutex> lock(mutex);
   add_to_list(entry);
 #ifndef NDEBUG
   std::println("deallocated [0x{:016x}]", reinterpret_cast<uintmax_t>(address));
 #endif
+#ifdef MemoryAllocatorAlwaysFree
+  HardenedMemoryManager::shrink();
+#endif
 }
-void HardenedMemoryManager::remove_all_pages() {
-  while (list != nullptr) {
-    if (list->is_leader()) {
-      remove_page(list);
+void HardenedMemoryManager::shrink() {
+  MemoryBlock **target = &list;
+  while (*target != nullptr) {
+    if ((*target)->is_leader() && (*target)->size() == page_size) {
+      remove_page(*target);
     } else {
-      remove_from_list(list);
-      std::println(stderr, "non-leader entry found during final cleanup, memory leak or improper merge?");
+      target = &(*target)->next;
     }
   }
+}
+void HardenedMemoryManager::close() {
+  HardenedMemoryManager::shrink();
+#ifdef MemoryAllocatorWarnLeakage
+  if (list != nullptr) {
+    std::println(stderr, "non-leader entry found during final cleanup, memory leak or improper merge?");
+  }
+#endif
 }
 MemoryBlock *HardenedMemoryManager::list = nullptr;
 size_t       HardenedMemoryManager::page_size;

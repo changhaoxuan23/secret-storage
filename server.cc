@@ -21,33 +21,40 @@ Server::~Server() {
 }
 
 auto Server::start(const char *address) -> bool {
-  sockaddr_un unix_socket_address = make_address(address);
-  this->socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  auto result = make_address(address, true);
+  if (!result.has_value()) {
+    return false;
+  }
+  sockaddr_un unix_socket_address = result.value();
+  this->socket_fd                 = socket(AF_UNIX, SOCK_STREAM, 0);
   if (this->socket_fd == -1) {
     return false;
   }
-  int return_value = bind(this->socket_fd, reinterpret_cast<const struct sockaddr *>(&unix_socket_address),
-                          sizeof(unix_socket_address));
+  int return_value = bind(
+    this->socket_fd,
+    reinterpret_cast<const struct sockaddr *>(&unix_socket_address),
+    sizeof(unix_socket_address)
+  );
   if (return_value == -1) {
     return false;
   }
   this->address = unix_socket_address.sun_path;
-  return_value = listen(this->socket_fd, 5);
+  return_value  = listen(this->socket_fd, 5);
   if (return_value == -1) {
     return false;
   }
   struct sigaction action;
   action.sa_handler = dummy_handler;
-  action.sa_flags = 0;
+  action.sa_flags   = 0;
   sigemptyset(&action.sa_mask);
   sigaction(SIGINT, &action, nullptr);
   return true;
 }
 
 void Server::serve() {
-  constexpr size_t buffer_size = 2000;
+  constexpr size_t                 buffer_size = 2000;
   HardenedMemoryAllocator<uint8_t> allocator;
-  auto *const input_message = reinterpret_cast<Message *>(allocator.allocate(buffer_size));
+  auto *const input_message  = reinterpret_cast<Message *>(allocator.allocate(buffer_size));
   auto *const output_message = reinterpret_cast<Message *>(allocator.allocate(buffer_size));
   while (this->running) {
     int pair_socket = accept(this->socket_fd, nullptr, nullptr);
@@ -60,62 +67,73 @@ void Server::serve() {
     recv(pair_socket, input_message, sizeof(Message), MSG_WAITALL);
     size_t result_length = sizeof(Message);
 
-    if (input_message->type == Message::Type::Ping) {
+    if (input_message->type == Message::Type::Ping) { // handle Ping requests
       output_message->type = Message::Type::Pong;
-      auto *const input = reinterpret_cast<SingleEntryBody *>(input_message->data);
-      auto *const output = reinterpret_cast<SingleEntryBody *>(output_message->data);
+      auto *const input    = reinterpret_cast<SingleEntryBody *>(input_message->data);
+      auto *const output   = reinterpret_cast<SingleEntryBody *>(output_message->data);
       input->receive(pair_socket);
       output->length = input->length;
       memcpy(output->data, input->data, input->length);
       result_length += sizeof(SingleEntryBody) + output->length;
-    } else if (input_message->type == Message::Type::Add) {
+    } else if (input_message->type == Message::Type::Add) { // handle Add requests
       auto *const input = reinterpret_cast<DoubleEntryBody *>(input_message->data);
       input->receive(pair_socket);
-      const auto result = this->storage.add(
+      bool result = true;
+      if (input_message->flags & Message::Flags::Add_ReplaceExisting) {
+        this->storage.update(
           secured_string(reinterpret_cast<const char *>(input->data), input->length[0]),
-          secured_string(reinterpret_cast<const char *>(input->data + input->length[0]), input->length[1]));
+          secured_string(reinterpret_cast<const char *>(input->data + input->length[0]), input->length[1])
+        );
+      } else {
+        result = this->storage.add(
+          secured_string(reinterpret_cast<const char *>(input->data), input->length[0]),
+          secured_string(reinterpret_cast<const char *>(input->data + input->length[0]), input->length[1])
+        );
+      }
       if (result) {
         output_message->type = Message::Type::Ok;
       } else {
         output_message->type = Message::Type::Failed;
       }
-    } else if (input_message->type == Message::Type::Update) {
-      auto *const input = reinterpret_cast<DoubleEntryBody *>(input_message->data);
-      input->receive(pair_socket);
-#ifndef NDEBUG
-      std::println(
-          "UPDATE({}, {})", std::string(reinterpret_cast<const char *>(input->data), input->length[0]),
-          std::string(reinterpret_cast<const char *>(input->data + input->length[0]), input->length[1]));
-#endif
-      this->storage.update(
-          secured_string(reinterpret_cast<const char *>(input->data), input->length[0]),
-          secured_string(reinterpret_cast<const char *>(input->data + input->length[0]), input->length[1]));
-      output_message->type = Message::Type::Ok;
-    } else if (input_message->type == Message::Type::Query) {
+    } else if (input_message->type == Message::Type::Query) { // handle Query requests
       auto *const input = reinterpret_cast<SingleEntryBody *>(input_message->data);
       input->receive(pair_socket);
-#ifndef NDEBUG
-      std::print("QUERY({})", std::string(reinterpret_cast<const char *>(input->data), input->length));
-#endif
       const auto result =
-          this->storage.query(secured_string(reinterpret_cast<const char *>(input->data), input->length));
+        this->storage.query(secured_string(reinterpret_cast<const char *>(input->data), input->length));
       if (result == nullptr) {
-#ifndef NDEBUG
-        std::println(" -> No Such Entry");
-#endif
         output_message->type = Message::Type::Failed;
       } else {
-#ifndef NDEBUG
-        std::println(" -> {}", std::string(result->c_str(), result->size()));
-#endif
-        output_message->type = Message::Type::Result;
-        auto *const output = reinterpret_cast<SingleEntryBody *>(output_message->data);
-        output->length = result->size();
-        memcpy(output->data, result->c_str(), output->length);
-        result_length += sizeof(SingleEntryBody) + output->length;
+        if (input_message->flags & Message::Flags::Query_ExistenceOnly) {
+          output_message->type = Message::Type::Ok;
+        } else {
+          output_message->type = Message::Type::Result;
+          auto *const output   = reinterpret_cast<SingleEntryBody *>(output_message->data);
+          output->length       = result->size();
+          memcpy(output->data, result->c_str(), output->length);
+          result_length += sizeof(SingleEntryBody) + output->length;
+        }
+        if (input_message->flags & Message::Flags::Query_DeleteSecret) {
+          this->storage.remove(secured_string(reinterpret_cast<const char *>(input->data), input->length));
+        }
       }
     } else if (input_message->type == Message::Type::Delete) {
-      output_message->type = Message::Type::Failed;
+      auto *const input = reinterpret_cast<SingleEntryBody *>(input_message->data);
+      input->receive(pair_socket);
+      const auto result =
+        this->storage.remove(secured_string(reinterpret_cast<const char *>(input->data), input->length));
+      if (result == 0) {
+        if (input_message->flags & Message::Flags::Delete_AllowMissing) {
+          output_message->type = Message::Type::Ok;
+        } else {
+          output_message->type = Message::Type::Failed;
+        }
+      } else {
+        output_message->type = Message::Type::Ok;
+      }
+    } else if (input_message->type == Message::Type::Terminate) {
+      this->running = false;
+      close(pair_socket);
+      break;
     }
 
     send(pair_socket, output_message, result_length, 0);
