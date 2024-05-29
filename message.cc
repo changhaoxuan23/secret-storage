@@ -5,6 +5,7 @@
 #include <stack>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #ifndef DefaultSocketName
 #define DefaultSocketName "secret-storage.sock"
