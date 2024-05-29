@@ -70,7 +70,6 @@ install(TARGETS SecretStorageAccessor EXPORT SecretStorageAccessorTargets
   LIBRARY DESTINATION lib      COMPONENT ClientLibrary
   ARCHIVE DESTINATION lib      COMPONENT ClientLibrary
   RUNTIME DESTINATION bin      COMPONENT ClientLibrary
-  INCLUDES DESTINATION include COMPONENT ClientLibrary
 )
 install(
   FILES
