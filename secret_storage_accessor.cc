@@ -68,8 +68,9 @@ static inline auto from_hex(char c) -> uint8_t { return c >= '0' && c <= '9' ? c
 auto SecretStorageAccessor::encode_string(std::string_view string) -> std::string_view {
   secured_string result(string.size() * 2, '\0');
   for (size_t i = 0; i < string.size(); i++) {
-    result[i << 1]       = to_hex(static_cast<char>(string[i] >> 4));
-    result[(i << 1) | 1] = to_hex(static_cast<char>(string[i] & 0xf));
+    auto c               = static_cast<uint8_t>(string[i]);
+    result[i << 1]       = to_hex(static_cast<char>(c >> 4));
+    result[(i << 1) | 1] = to_hex(static_cast<char>(c & 0xf));
   }
   return view_wrapper(std::move(result));
 }
